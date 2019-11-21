@@ -57,12 +57,13 @@ vec4 light_diffuse = {1.0,1.0,1.0,1.0};
 vec4 light_specular = {1.0,1.0,1.0,1.0};
 vec4 light_ambient = {0.3, 0.3, 0.3, 1.0};
 GLfloat attenuation_constant = 0.5, attenuation_linear=0.1, attenuation_quadratic=0.1, shininess=1.0;
-GLuint att_const_location, att_lin_location, att_quad_location, shininess_location, shadow_location;
+GLuint att_const_location, att_lin_location, att_quad_location, shininess_location;
 GLuint amb_prod_location, diff_prod_location, spec_prod_location, light_location;
 
 int num_vertices = 0, animate = 0;;
-GLuint model_view_location, projection_location, ctm_location;
-mat4 model_view, projection, ctm;
+GLuint model_view_location, projection_location, ctm_location, light_model_view_location, light_projection_location, useTexture_location;
+GLuint depth_render_buffer;
+mat4 model_view, projection, ctm, light_model_view, light_projection;
 mat4 ball_ctms[5];
 vec4 lrb, tnf;
 vec4 light_position = {0,3,0,1.0};
@@ -134,29 +135,36 @@ void init(void)
 	vec4 normals[num_vertices];
 	fill(vertices,normals);
 
-	/*int width = 800;
-	  int height = 800;
-	  GLubyte my_texels[width][height][3];
-
-	  FILE *fp = fopen("p2texture04.raw", "r");
-	  fread(my_texels, width * height * 3, 1, fp);
-	  fclose(fp);
-	 */
 	GLuint program = initShader("vshader_ctm.glsl", "fshader.glsl");
 	glUseProgram(program);
 
-	/*GLuint mytex[1];
-	  glGenTextures(1, mytex);
-	  glBindTexture(GL_TEXTURE_2D, mytex[0]);
-	  glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, my_texels);
-	  glTexParameterf( GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT );
-	  glTexParameterf( GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT );
-	  glTexParameterf( GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST );
-	  glTexParameterf( GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST );
+	int width = 768;
+	int height = 768;
+	//GLubyte my_texels[width][height][3];	 
 
-	  int param;
-	  glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_WIDTH, &param);
-	 */
+	GLuint rendered_texture;
+	glGenTextures(1, &rendered_texture);
+	glBindTexture(GL_TEXTURE_2D, rendered_texture);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT16, width, height, 0, GL_DEPTH_COMPONENT, GL_FLOAT, 0);
+	glTexParameterf( GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT );
+	glTexParameterf( GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT );
+	glTexParameterf( GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST );
+	glTexParameterf( GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST );
+
+	//int param;
+	//glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_WIDTH, &param);
+
+	glGenRenderbuffers(1, &depth_render_buffer);
+	glBindRenderbuffer(GL_RENDERBUFFER, depth_render_buffer);
+	glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT, width, height);
+	glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, depth_render_buffer);
+	glFramebufferTexture(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, rendered_texture, 0);
+	if(glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
+		return;
+
+	 GLuint texture_location = glGetUniformLocation(program, "myTextureSampler");
+	 glUniform1i(texture_location, 0);
+	
 	GLuint vao;
 	glGenVertexArrays(1, &vao);
 	glBindVertexArray(vao);
@@ -180,20 +188,22 @@ void init(void)
 	/*GLuint vTexCoord = glGetAttribLocation(program, "vTexCoord");
 	  glEnableVertexAttribArray(vTexCoord);
 	  glVertexAttribPointer(vTexCoord, 2, GL_FLOAT, GL_FALSE, 0, (GLvoid *) 0 + (sizeof(vertices) + sizeof(normals)));
-
-	  GLuint texture_location = glGetUniformLocation(program, "texture");
-	  glUniform1i(texture_location, 0);
-	 */
+	*/ 
+	
 	identityMatrix(model_view);
 	vec4 e = {radius*cos(theta)*sin(phi),radius*cos(phi),radius*sin(theta)*sin(phi),0.0};
 	vec4 a = {0.0,0.0,0,0.0};
 	vec4 vup = {0.0,1.0,0.0,0.0};
 	lookAt(e,a,vup,model_view);
+	vec4 le = {light_position[0],light_position[1],light_position[2], 0.0};
+	vec4 vupl = {0,0,-1,0};
+	lookAt(le,a,vupl, light_model_view);
 
 	identityMatrix(projection);
 	makeVector(-1,1,-1,0,lrb);
 	makeVector(1,-1,-14,0,tnf);
 	frustum(lrb,tnf,projection);
+	frustum(lrb,tnf,light_projection);
 	matrixTranslation(light_position[0],light_position[1],light_position[2],ctm);
 	int i;
 	for(i=0;i<5;i++){
@@ -207,10 +217,12 @@ void init(void)
 	att_lin_location = glGetUniformLocation(program, "attenuation_linear");
 	att_quad_location = glGetUniformLocation(program, "attenuation_quadratic");
 	shininess_location = glGetUniformLocation(program, "shininess");
-	shadow_location = glGetUniformLocation(program, "isShadow");
 	amb_prod_location = glGetUniformLocation(program, "ambient_product");
 	diff_prod_location = glGetUniformLocation(program, "diffuse_product");
 	spec_prod_location = glGetUniformLocation(program, "specular_product");
+	light_model_view_location = glGetUniformLocation(program, "light_model_view");
+	light_projection_location = glGetUniformLocation(program, "light_projection");
+	useTexture_location = glGetUniformLocation(program, "useTexture");
 
 	glEnable(GL_DEPTH_TEST);
 	glEnable(GL_CULL_FACE);
@@ -221,67 +233,74 @@ void init(void)
 void display(void)
 {
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-
+	glBindFramebuffer(GL_FRAMEBUFFER, depth_render_buffer);
+	
 	glPolygonMode(GL_FRONT, GL_FILL);
 	glPolygonMode(GL_BACK, GL_LINE);
 	glUniformMatrix4fv(model_view_location, 1, GL_FALSE, model_view);
-	glUniformMatrix4fv(projection_location, 1, GL_FALSE, projection);	
+	glUniformMatrix4fv(projection_location, 1, GL_FALSE, projection);
+	glUniformMatrix4fv(light_model_view_location, 1, GL_FALSE, light_model_view);
+	glUniformMatrix4fv(light_projection_location, 1, GL_FALSE, light_projection);	
 	glUniform4fv(light_location, 1, light_position);
 	glUniform1fv(att_const_location, 1, (GLfloat *) &attenuation_constant);
 	glUniform1fv(att_lin_location, 1, (GLfloat *) &attenuation_linear);
 	glUniform1fv(att_quad_location, 1, (GLfloat *) &attenuation_quadratic);
-	glUniform1i(shadow_location, 0);
-	int i;
-	for(i=0;i<2;i++){
-		glUniform1fv(shininess_location, 1, (GLfloat *) &other_materials[i].shininess);
+	glUniform1i(useTexture_location, 1);
+	int i,j;
+	for(j=0;j<2;j++){
+		for(i=0;i<2;i++){
+			glUniform1fv(shininess_location, 1, (GLfloat *) &other_materials[i].shininess);
 
-		vec4 amb_product, diff_product, spec_product;
-		vectorProduct(other_materials[i].reflect_ambient, light_ambient, amb_product);
-		vectorProduct(other_materials[i].reflect_diffuse, light_diffuse, diff_product);
-		vectorProduct(other_materials[i].reflect_specular, light_specular, spec_product);
-		glUniform4fv(amb_prod_location, 1, amb_product);
-		glUniform4fv(diff_prod_location, 1, diff_product);
-		glUniform4fv(spec_prod_location, 1, spec_product);
+			vec4 amb_product, diff_product, spec_product;
+			vectorProduct(other_materials[i].reflect_ambient, light_ambient, amb_product);
+			vectorProduct(other_materials[i].reflect_diffuse, light_diffuse, diff_product);
+			vectorProduct(other_materials[i].reflect_specular, light_specular, spec_product);
+			glUniform4fv(amb_prod_location, 1, amb_product);
+			glUniform4fv(diff_prod_location, 1, diff_product);
+			glUniform4fv(spec_prod_location, 1, spec_product);
 
-		if(i==0){ 
-			mat4 temp;
-			identityMatrix(temp);
-			glUniformMatrix4fv(ctm_location, 1, GL_FALSE, temp);
-			glDrawArrays(GL_TRIANGLES, 0, 36);
-		}else{
-			glUniformMatrix4fv(ctm_location, 1, GL_FALSE, ctm);
-			glDrawArrays(GL_TRIANGLES, 36, 10800);
+			if(i==0){ 
+				mat4 temp;
+				identityMatrix(temp);
+				glUniformMatrix4fv(ctm_location, 1, GL_FALSE, temp);
+				glDrawArrays(GL_TRIANGLES, 0, 36);
+			}else{
+				glUniformMatrix4fv(ctm_location, 1, GL_FALSE, ctm);
+				glDrawArrays(GL_TRIANGLES, 36, 10800);
+			}
 		}
-	}
-	for(i=0;i<5;i++){
-		glUniform4fv(light_location, 1, light_position);
-		glUniformMatrix4fv(ctm_location, 1, GL_FALSE, ball_ctms[i]);
-		glUniform1fv(shininess_location, 1, (GLfloat *) &ball_materials[i].shininess);
+		for(i=0;i<5;i++){
+			glUniform4fv(light_location, 1, light_position);
+			glUniformMatrix4fv(ctm_location, 1, GL_FALSE, ball_ctms[i]);
+			glUniform1fv(shininess_location, 1, (GLfloat *) &ball_materials[i].shininess);
 
-		vec4 amb_product, diff_product, spec_product;
-		vectorProduct(ball_materials[i].reflect_ambient, light_ambient, amb_product);
-		vectorProduct(ball_materials[i].reflect_diffuse, light_diffuse, diff_product);
-		vectorProduct(ball_materials[i].reflect_specular, light_specular, spec_product);
-		glUniform4fv(amb_prod_location, 1, amb_product);
-		glUniform4fv(diff_prod_location, 1, diff_product);
-		glUniform4fv(spec_prod_location, 1, spec_product);
-		glDrawArrays(GL_TRIANGLES, (i*10800)+10836, 10800);
+			vec4 amb_product, diff_product, spec_product;
+			vectorProduct(ball_materials[i].reflect_ambient, light_ambient, amb_product);
+			vectorProduct(ball_materials[i].reflect_diffuse, light_diffuse, diff_product);
+			vectorProduct(ball_materials[i].reflect_specular, light_specular, spec_product);
+			glUniform4fv(amb_prod_location, 1, amb_product);
+			glUniform4fv(diff_prod_location, 1, diff_product);
+			glUniform4fv(spec_prod_location, 1, spec_product);
+			glDrawArrays(GL_TRIANGLES, (i*10800)+10836, 10800);
+		}
+		glUniform1i(useTexture_location,0);
+		glBindFramebuffer(GL_FRAMEBUFFER, 0);
 	}
-	glUniform1i(shadow_location, 1);
-	for(i=0;i<5;i++){
-		glUniform4fv(light_location, 1, light_position);
-		glUniformMatrix4fv(ctm_location, 1, GL_FALSE, ball_ctms[i]);
-		glUniform1fv(shininess_location, 1, (GLfloat *) &other_materials[2].shininess);
+	/*glUniform1i(shadow_location, 1);
+	  for(i=0;i<5;i++){
+	  glUniform4fv(light_location, 1, light_position);
+	  glUniformMatrix4fv(ctm_location, 1, GL_FALSE, ball_ctms[i]);
+	  glUniform1fv(shininess_location, 1, (GLfloat *) &other_materials[2].shininess);
 
-		vec4 amb_product, diff_product, spec_product;
-		vectorProduct(other_materials[2].reflect_ambient, light_ambient, amb_product);
-		vectorProduct(other_materials[2].reflect_diffuse, light_diffuse, diff_product);
-		vectorProduct(other_materials[2].reflect_specular, light_specular, spec_product);
-		glUniform4fv(amb_prod_location, 1, amb_product);
-		glUniform4fv(diff_prod_location, 1, diff_product);
-		glUniform4fv(spec_prod_location, 1, spec_product);
-		glDrawArrays(GL_TRIANGLES, (i*10800)+10836, 10800);
-	}
+	  vec4 amb_product, diff_product, spec_product;
+	  vectorProduct(other_materials[2].reflect_ambient, light_ambient, amb_product);
+	  vectorProduct(other_materials[2].reflect_diffuse, light_diffuse, diff_product);
+	  vectorProduct(other_materials[2].reflect_specular, light_specular, spec_product);
+	  glUniform4fv(amb_prod_location, 1, amb_product);
+	  glUniform4fv(diff_prod_location, 1, diff_product);
+	  glUniform4fv(spec_prod_location, 1, spec_product);
+	  glDrawArrays(GL_TRIANGLES, (i*10800)+10836, 10800);
+	  }*/
 	glutSwapBuffers();
 }
 
@@ -343,6 +362,10 @@ void keyboard(unsigned char key, int mousex, int mousey)
 	mat4 trans;
 	matrixTranslation(light_position[0],light_position[1],light_position[2],trans);
 	matrixCopy(trans,ctm);
+	vec4 e = {light_position[0],light_position[1],light_position[2], 0.0};
+	vec4 a = {0.0,0.0,0.0,0.0};
+	vec4 vup = {0,0,-1.0,0.0};
+	lookAt(e,a,vup,light_model_view);
 	glutPostRedisplay();
 }
 
@@ -366,19 +389,19 @@ void mouse(int button, int state, int x, int y) {
 
 void idle(void) {
 	if(animate){mat4 spin, copy;
-	matrixRotateY(0.0075,spin);
-	matrixMultiplication(spin,ball_ctms[1],copy);
-	matrixCopy(copy,ball_ctms[1]);
-	matrixRotateY(0.01,spin);
-	matrixMultiplication(spin,ball_ctms[2],copy);
-	matrixCopy(copy,ball_ctms[2]);
-	matrixRotateY(0.0115,spin);
-	matrixMultiplication(spin,ball_ctms[3],copy);
-	matrixCopy(copy,ball_ctms[3]);
-	matrixRotateY(0.014,spin);
-	matrixMultiplication(spin,ball_ctms[4],copy);
-	matrixCopy(copy,ball_ctms[4]);
-	glutPostRedisplay();
+		matrixRotateY(0.0075,spin);
+		matrixMultiplication(spin,ball_ctms[1],copy);
+		matrixCopy(copy,ball_ctms[1]);
+		matrixRotateY(0.01,spin);
+		matrixMultiplication(spin,ball_ctms[2],copy);
+		matrixCopy(copy,ball_ctms[2]);
+		matrixRotateY(0.0115,spin);
+		matrixMultiplication(spin,ball_ctms[3],copy);
+		matrixCopy(copy,ball_ctms[3]);
+		matrixRotateY(0.014,spin);
+		matrixMultiplication(spin,ball_ctms[4],copy);
+		matrixCopy(copy,ball_ctms[4]);
+		glutPostRedisplay();
 	}
 }
 
@@ -386,7 +409,7 @@ int main(int argc, char **argv)
 {
 	glutInit(&argc, argv);
 	glutInitDisplayMode(GLUT_RGBA | GLUT_DOUBLE | GLUT_DEPTH);
-	glutInitWindowSize(512,512);
+	glutInitWindowSize(768,768);
 	glutInitWindowPosition(100,100);
 	glutCreateWindow("Pool");
 	glewInit();
