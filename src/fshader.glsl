@@ -29,9 +29,9 @@ void main()
 		diffuse = max(dot(LL, NN), 0.0) * diffuse_product;
 		specular = pow(max(dot(NN, H), 0.0), shininess) * specular_product;
 		float attenuation = 1/(attenuation_constant + (attenuation_linear * distance) + (attenuation_quadratic * distance * distance));
-		if(newFragPosition.z <= texture2D(myTextureSampler,vec2(newFragPosition.x, newFragPosition.y)).z+0.01)
+		//if(newFragPosition.z <= texture2D(myTextureSampler,vec2(newFragPosition.x, newFragPosition.y)).z+0.01)
 			gl_FragColor = ambient + (attenuation * (diffuse + specular));
-		else
-			gl_FragColor = 0.2 * (ambient + (attenuation * (diffuse + specular)));
+		//else
+		//	gl_FragColor = 0.2 * (ambient + (attenuation * (diffuse + specular)));
 	}
 }

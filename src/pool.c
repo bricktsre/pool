@@ -286,21 +286,6 @@ void display(void)
 		glUniform1i(useTexture_location,0);
 		glBindFramebuffer(GL_FRAMEBUFFER, 0);
 	}
-	/*glUniform1i(shadow_location, 1);
-	  for(i=0;i<5;i++){
-	  glUniform4fv(light_location, 1, light_position);
-	  glUniformMatrix4fv(ctm_location, 1, GL_FALSE, ball_ctms[i]);
-	  glUniform1fv(shininess_location, 1, (GLfloat *) &other_materials[2].shininess);
-
-	  vec4 amb_product, diff_product, spec_product;
-	  vectorProduct(other_materials[2].reflect_ambient, light_ambient, amb_product);
-	  vectorProduct(other_materials[2].reflect_diffuse, light_diffuse, diff_product);
-	  vectorProduct(other_materials[2].reflect_specular, light_specular, spec_product);
-	  glUniform4fv(amb_prod_location, 1, amb_product);
-	  glUniform4fv(diff_prod_location, 1, diff_product);
-	  glUniform4fv(spec_prod_location, 1, spec_product);
-	  glDrawArrays(GL_TRIANGLES, (i*10800)+10836, 10800);
-	  }*/
 	glutSwapBuffers();
 }
 
